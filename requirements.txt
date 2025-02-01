@@ -1,0 +1,6 @@
+streamlit
+pandas
+nltk
+google-api-python-client
+youtube-transcript-api
+reportlab

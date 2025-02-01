@@ -6,12 +6,56 @@ from collections import Counter
 from googleapiclient.discovery import build
 from youtube_transcript_api import YouTubeTranscriptApi
 import re
+from dotenv import load_dotenv
+import os
+from datetime import datetime
+import locale
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib import colors
+from googleapiclient.errors import HttpError
+import json
+
+def generate_pdf(content_list, file_path):
+    doc = SimpleDocTemplate(file_path, pagesize=letter)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # Adicionar o título ao PDF
+    title = "Analisador de Palavras para Canais do YouTube"
+    elements.append(Paragraph(title, styles['Title']))
+    elements.append(Spacer(1, 12))
+
+    for item in content_list:
+        if isinstance(item, str):
+            elements.append(Paragraph(item, styles['Normal']))
+            elements.append(Spacer(1, 12))
+        elif isinstance(item, Table):
+            elements.append(item)
+            elements.append(Spacer(1, 12))
+
+    doc.build(elements)
+
+# Configurar a página do Streamlit
+st.set_page_config(page_title="Analisador de Palavras - YouTube", layout="wide")
+
+# Carregar o CSS do spinner e exibir o conteúdo
+with open("spinner.css") as f:
+    css_content = f.read()
+    st.markdown(f"<style>{css_content}</style>", unsafe_allow_html=True)
+
+# Carregar variáveis de ambiente
+load_dotenv()
 
 # Baixar stopwords do NLTK (apenas na primeira vez)
 nltk.download('stopwords')
 
+# Configurar o locale para o Brasil
+locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+
 # Configuração da API do YouTube
-YOUTUBE_API_KEY = "AIzaSyD_r42vGGfDbKFR9GOy10gFPzHNxme3O6M"  # Insira sua chave da YouTube Data API
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
 
 def get_channel_info(channel_id):
@@ -26,7 +70,7 @@ def get_channel_info(channel_id):
             channel_info = response["items"][0]
             return {
                 "title": channel_info["snippet"]["title"],
-                "description": channel_info["snippet"]["description"],
+                "description": channel_info["snippet"].get("description", "N/A"),
                 "subscriberCount": channel_info["statistics"].get("subscriberCount", "N/A"),
                 "videoCount": channel_info["statistics"].get("videoCount", "N/A")
             }
@@ -34,10 +78,27 @@ def get_channel_info(channel_id):
         st.error(f"Erro ao obter informações do canal: {e}")
         return None
 
+def get_video_details(video_id):
+    """Obtém detalhes do vídeo, incluindo visualizações, likes e dislikes."""
+    try:
+        request = youtube.videos().list(
+            part="statistics",
+            id=video_id
+        )
+        response = request.execute()
+        if "items" in response and response["items"]:
+            stats = response["items"][0]["statistics"]
+            return {
+                "views": stats.get("viewCount", "N/A"),
+                "likes": stats.get("likeCount", "N/A"),
+                "dislikes": stats.get("dislikeCount", "N/A")
+            }
+    except Exception as e:
+        st.error(f"Erro ao obter estatísticas do vídeo: {e}")
+        return {"views": "N/A", "likes": "N/A", "dislikes": "N/A"}
+
 def get_video_ids(channel_url, max_results=10):
-    """Obtém o channelId a partir do @handle ou da URL padrão, e busca os vídeos."""
-    
-    # Verifica se a URL tem um handle (@NomeDoCanal)
+    """Obtém o channelId a partir do @handle ou da URL padrão, e busca os vídeos mais recentes."""
     handle_match = re.search(r"@([\w-]+)", channel_url)
     
     if handle_match:
@@ -54,11 +115,14 @@ def get_video_ids(channel_url, max_results=10):
                 st.error("Não foi possível encontrar o canal.")
                 return [], None
         except Exception as e:
-            st.error(f"Erro ao buscar channelId: {e}")
+            error_message = f"""
+                <div style='color: red;'>
+                    <strong>Erro ao buscar channelId:</strong> {e}
+                </div>
+            """
+            st.markdown(error_message, unsafe_allow_html=True)
             return [], None
-    
     else:
-        # Caso a URL contenha um channelId diretamente
         channel_id_match = re.search(r"channel/([a-zA-Z0-9_-]+)", channel_url)
         if channel_id_match:
             channel_id = channel_id_match.group(1)
@@ -66,23 +130,36 @@ def get_video_ids(channel_url, max_results=10):
             st.error("URL do canal inválida.")
             return [], None
     
-    # Buscar informações do canal
     channel_info = get_channel_info(channel_id)
     
-    # Agora que temos o channelId, buscar vídeos
     try:
         request = youtube.search().list(
             part="id,snippet",
             channelId=channel_id,
             maxResults=max_results,
-            type="video"
+            type="video",
+            order="date"
         )
         response = request.execute()
 
-        return [(item['id']['videoId'], item['snippet']['title'], item['snippet']['publishedAt']) for item in response.get('items', [])], channel_info
+        return [(item['id']['videoId'], item['snippet']['title'], datetime.strptime(item['snippet']['publishedAt'], "%Y-%m-%dT%H:%M:%SZ").strftime("%d/%m/%Y")) for item in response.get('items', [])], channel_info
     
-    except Exception as e:
-        st.error(f"Erro ao buscar vídeos: {e}")
+    except HttpError as e:
+        error_details = e.content.decode()
+        try:
+            error_json = json.loads(error_details)
+            message = error_json['error']['message']
+        except (json.JSONDecodeError, KeyError):
+            message = error_details  # Fallback to raw error details if parsing fails
+            
+        error_message = f"""
+            <div style='color: red;'>
+                <strong>Erro ao buscar vídeos:</strong> {e}
+                <br>
+                <span>Detalhes: {message}</span>
+            </div>
+        """
+        st.markdown(error_message, unsafe_allow_html=True)
         return [], channel_info
 
 def get_video_transcript(video_id):
@@ -91,71 +168,155 @@ def get_video_transcript(video_id):
         try:
             transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'en'])
         except Exception:
-            transcript = YouTubeTranscriptApi.get_transcript(video_id)  # Tenta qualquer idioma disponível
+            transcript = YouTubeTranscriptApi.get_transcript(video_id)
         return " ".join([entry['text'] for entry in transcript])
     except Exception:
         return ""
 
-def process_text(text, top_n):
-    """Conta palavras mais usadas e calcula percentual."""
-    text = text.lower()
-    text = re.sub(r'[^a-zA-ZÀ-ÿ\s]', '', text)  # Remover pontuação e números
-    words = text.split()
-    stop_words = set(stopwords.words('portuguese'))
-    words = [word for word in words if word not in stop_words]
+def process_text(text, num_words):
+    """Processa o texto e retorna as palavras mais frequentes, formatadas com centralização e numeração."""
+    words = re.findall(r'\b\w+\b', text.lower())
+    words = [word for word in words if word not in stopwords.words('portuguese')]
+    counter = Counter(words)
+    most_common = counter.most_common(num_words)
+    total_words = sum(counter.values())
     
-    word_counts = Counter(words)
-    total_words = sum(word_counts.values())
+    df = pd.DataFrame(most_common, columns=["Palavra", "Quantidade"])
+    df["Percentual"] = (df["Quantidade"] / total_words) * 100
+    df.index = df.index + 1
     
-    df = pd.DataFrame(word_counts.most_common(top_n), columns=['Palavra', 'Frequência'])
-    df['Percentual'] = (df['Frequência'] / total_words) * 100
-    return df
+    df['Quantidade'] = df['Quantidade'].apply(lambda x: locale.format_string("%d", x, grouping=True))
+    df['Percentual'] = df['Percentual'].apply(lambda x: locale.format_string("%.2f%%", x))
+    
+    df_styled = df.style.set_properties(subset=['Quantidade', 'Percentual'], **{'text-align': 'center'})
+    df_styled = df_styled.set_properties(subset=['Palavra'], **{'text-align': 'left'})
+    df_styled = df_styled.set_table_styles({
+        'data': [{'selector': 'th', 'props': [('text-align', 'center')]},
+                 {'selector': 'td', 'props': [('text-align', 'center')]}]
+    }).set_table_attributes('style="width:90%;"')
+    
+    return df_styled
 
 def main():
-    st.set_page_config(page_title="Analisador de Palavras - YouTube", layout="wide")
     st.sidebar.title("Configurações")
     channel_url = st.sidebar.text_input("Insira a URL do canal do YouTube:", "", placeholder="Exemplo: https://www.youtube.com/@canaltragicomico/")
     st.sidebar.write("Insira a URL do canal no formato válido, por exemplo, com @handle ou ID do canal.")
     num_words = st.sidebar.number_input("Quantidade de palavras mais usadas:", min_value=1, max_value=100, value=10)
-    
-    st.title("Analisador de Palavras de um Canal do YouTube")
-    
-    if st.sidebar.button("Analisar"):
-        st.write("Buscando vídeos...")
-        video_data, channel_info = get_video_ids(channel_url)
+    max_videos = st.sidebar.number_input("Quantidade de vídeos a analisar:", min_value=1, max_value=50, value=10)
+
+    st.title("Analisador de Palavras para Canais do YouTube")
+
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        exibir_button = st.button("Exibir na Tela")
+    with col2:
+        exportar_button = st.button("Exportar para PDF")
+
+    if exibir_button:
+        placeholder = st.empty()
+        placeholder.markdown("""
+            <div class="spinner-container">
+                <div class="spinner"></div>
+                <div class="spinner-text">Buscando vídeos...</div>
+            </div>
+        """, unsafe_allow_html=True)
         
+        video_data, channel_info = get_video_ids(channel_url, max_results=max_videos)
+
         if not video_data:
             st.error("Não foi possível obter vídeos do canal.")
+            placeholder.empty()  # Remover o spinner em caso de erro
             return
+
+        all_text = ""
+        video_results = []
+
+        for index, (video_id, title, published_at) in enumerate(video_data, start=1):
+            placeholder.markdown(f"""
+                <div class="spinner-container">
+                    <div class="spinner"></div>
+                    <div class="spinner-text">Analisando {index}º Vídeo com Título: {title}...</div>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            transcript = get_video_transcript(video_id)
+            details = get_video_details(video_id)
+            all_text += " " + transcript
+            video_df = process_text(transcript, num_words)
+            video_results.append((index, video_id, title, published_at, details, video_df))
         
+        # Remover o spinner após o processamento
+        placeholder.empty()
+
+        st.subheader("Resultados")
+
         if channel_info:
             st.subheader(f"Informações do canal: {channel_info['title']}")
             st.write(f"**Descrição:** {channel_info['description']}")
-            st.write(f"**Inscritos:** {channel_info['subscriberCount']}")
-            st.write(f"**Quantidade de vídeos:** {channel_info['videoCount']}")
-        
+            st.write(f"**Inscritos:** {locale.format_string('%d', int(channel_info['subscriberCount']), grouping=True)}")
+            st.write(f"**Quantidade de vídeos:** {locale.format_string('%d', int(channel_info['videoCount']), grouping=True)}")
+
+        for index, video_id, title, published_at, details, df in video_results:
+            dislikes_text = f" | Dislikes: {locale.format_string('%d', int(details['dislikes']), grouping=True)}" if details['dislikes'] != 'N/A' else ""
+            st.write(f"### {index}. {title}")
+            st.write(f"Data: {published_at} | Views: {locale.format_string('%d', int(details['views']), grouping=True)} | Likes: {locale.format_string('%d', int(details['likes']), grouping=True)}{dislikes_text}")
+            st.markdown(df.to_html(), unsafe_allow_html=True)
+
+    if exportar_button:
+        st.title("Analisador de Palavras para Canais do YouTube")  # Limpar o conteúdo deixando o título
+        placeholder = st.empty()
+        placeholder.markdown("""
+            <div class="spinner-container">
+                <div class="spinner"></div>
+                <div class="spinner-text">Buscando vídeos...</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        video_data, channel_info = get_video_ids(channel_url, max_results=max_videos)
+
+        if not video_data:
+            st.error("Não foi possível obter vídeos do canal.")
+            placeholder.empty()  # Remover o spinner em caso de erro
+            return
+
         all_text = ""
         video_results = []
-        
-        for video_id, title, published_at in video_data:
+        pdf_content = []
+
+        for index, (video_id, title, published_at) in enumerate(video_data, start=1):
+            placeholder.markdown(f"""
+                <div class="spinner-container">
+                    <div class="spinner"></div>
+                    <div class="spinner-text">Analisando {index}º Vídeo com Título: {title}...</div>
+            """, unsafe_allow_html=True)
+            
             transcript = get_video_transcript(video_id)
+            details = get_video_details(video_id)
             all_text += " " + transcript
             video_df = process_text(transcript, num_words)
-            video_results.append((video_id, title, published_at, video_df))
-        
-        if not all_text.strip():
-            st.error("Não foi possível obter legendas dos vídeos.")
-            return
-        
-        channel_df = process_text(all_text, num_words)
-        
-        st.subheader("Palavras mais usadas no canal")
-        st.dataframe(channel_df)
-        
-        st.subheader("Palavras mais usadas por vídeo")
-        for video_id, title, published_at, df in video_results:
-            st.write(f"#### {title} ({published_at})")
-            st.dataframe(df)
+            video_results.append((index, video_id, title, published_at, details, video_df))
+
+            dislikes_text = f" | Dislikes: {locale.format_string('%d', int(details['dislikes']), grouping=True)}" if details['dislikes'] != 'N/A' else ""
+
+            # Adiciona o conteúdo para o PDF
+            pdf_content.append(f"{index}. {title}")
+            pdf_content.append(f"Data: {published_at} | Views: {locale.format_string('%d', int(details['views']), grouping=True)} | Likes: {locale.format_string('%d', int(details['likes']), grouping=True)}{dislikes_text}")
+            pdf_content.append(video_df.data.to_string(index=False) + "\n")  # Acesse diretamente o DataFrame com video_df.data
+
+        # Adiciona as informações do canal ao PDF
+        if channel_info:
+            pdf_content.insert(0, f"Quantidade de vídeos: {locale.format_string('%d', int(channel_info['videoCount']), grouping=True)}")
+            pdf_content.insert(0, f"Inscritos: {locale.format_string('%d', int(channel_info['subscriberCount']), grouping=True)}")
+            pdf_content.insert(0, f"**Descrição:** {channel_info['description']}")
+            pdf_content.insert(0, f"Informações do canal: {channel_info['title']}")
+
+        placeholder.empty()  # Remover o spinner após o processamento
+
+        # Gerar o PDF
+        pdf_file_path = "resultados.pdf"
+        generate_pdf(pdf_content, pdf_file_path)
+        with open(pdf_file_path, "rb") as f:
+            st.download_button("Exportar para PDF", f, file_name="resultados.pdf", mime="application/pdf")
 
 if __name__ == "__main__":
     main()
