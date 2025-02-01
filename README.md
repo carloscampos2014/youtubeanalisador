@@ -28,6 +28,25 @@ Este é um aplicativo desenvolvido em **Python** utilizando **Streamlit**, que p
 
 ---
 
+## 🧩 Pré-requisitos  
+
+Antes de começar, certifique-se de ter o seguinte instalado:  
+
+- Python 3.7 ou superior
+
+---
+
+## 📂 Estrutura do Projeto  
+
+```plaintext
+analisador-youtube/
+├── app.py
+├── requirements.txt
+├── README.md
+└── .env.example
+
+---
+
 ## 📺 Instalação  
 
 1️⃣ Clone este repositório:  
@@ -59,10 +78,19 @@ streamlit run app.py
 
 ## 🎥 Interface  
 
-O aplicativo apresenta uma interface simples, com **botões de ícones** para facilitar a interação:  
+O aplicativo apresenta uma interface simples, com **botões** para facilitar a interação:  
 
-- **🔍 Monitor** → Exibe a análise na tela.  
-- **📄 PDF** → Exporta os resultados para um arquivo PDF.  
+- **Visualizar** → Exibe a análise na tela.  
+- **Exportar PDF** → Exporta os resultados para um arquivo PDF e permite baixar o resultado atraves de um botão **Baixar PD**
+
+---
+
+## 🎬 Exemplo de Uso  
+
+1. Abra o aplicativo Streamlit.
+2. Insira a URL do canal do YouTube.
+3. Clique em "Visualizar" para exibir a análise na tela.
+4. Clique em "Exportar PDF" para baixar os resultados em formato PDF.
 
 ---
 
