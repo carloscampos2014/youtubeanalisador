@@ -1,3 +1,4 @@
+import streamlit as st
 import pandas as pd
 import re
 import locale
@@ -12,6 +13,10 @@ def process_text(text, num_words):
     counter = Counter(words)
     most_common = counter.most_common(num_words)
     total_words = sum(counter.values())
+
+    # Mensagem de depuração
+    st.write("Palavras mais comuns:", most_common)
+    st.write("Total de palavras:", total_words)
     
     # Criar DataFrame com as palavras mais comuns
     df = pd.DataFrame(most_common, columns=["Palavra", "Quantidade"])
@@ -27,10 +32,7 @@ def process_text(text, num_words):
     df_styled = df_styled.set_properties(subset=['Palavra'], **{'text-align': 'left'})
     df_styled = df_styled.set_table_styles([
         {'selector': 'thead th', 'props': [('text-align', 'center')]},
-        {'selector': 'tbody th', 'props': [('text-align', 'center')]},
-        {'selector': 'thead th.col_heading.level0', 'props': [('text-align', 'center')]},
-        {'selector': 'thead th.col_heading.level1', 'props': [('text-align', 'center')]},
-        {'selector': 'tbody td.row_heading.level0', 'props': [('text-align', 'center')]}
+        {'selector': 'tbody th', 'props': [('text-align', 'center')]}
     ]).set_table_attributes('style="width:90%;"')
 
     return df_styled
@@ -38,4 +40,4 @@ def process_text(text, num_words):
 # Teste da função com uma string de exemplo
 if __name__ == "__main__":
     example_text = "Este é um exemplo de texto para testar a função de processamento de texto."
-    print(process_text(example_text, 5))
+    st.write(process_text(example_text, 5))
