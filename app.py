@@ -117,6 +117,7 @@ class YouTubeAnalyzer:
                 transcript = YouTubeTranscriptApi.get_transcript(video_id)
             return " ".join([entry['text'] for entry in transcript])
         except Exception:
+            st.error(f"Erro ao obter a transcrição do vídeo {video_id}: {e}")
             return None
 
     def process_text(self, text, num_words):
@@ -219,7 +220,7 @@ def main():
             details = analyzer.get_video_details(video_id)
             all_text += " " + transcript
             video_df = analyzer.process_text(transcript, num_words)
-            video_results.append((index, video_id, title, published_at, details, video_df))
+            video_results.append((index, video_id, title, published_at, details, transcript, video_df))
 
         placeholder.empty()
         st.subheader("Resultados")
@@ -230,10 +231,15 @@ def main():
             st.write(f"**Inscritos:** {locale.format_string('%d', int(channel_info['subscriberCount']), grouping=True)}")
             st.write(f"**Quantidade de vídeos:** {locale.format_string('%d', int(channel_info['videoCount']), grouping=True)}")
 
-        for index, video_id, title, published_at, details, df in video_results:
+        for index, video_id, title, published_at, details, transcript, df in video_results:
             dislikes_text = f" | Dislikes: {locale.format_string('%d', int(details['dislikes']), grouping=True)}" if details['dislikes'] != 'N/A' else ""
             st.write(f"### {index}. {title}")
             st.write(f"Data: {published_at} | Views: {locale.format_string('%d', int(details['views']), grouping=True)} | Likes: {locale.format_string('%d', int(details['likes']), grouping=True)}{dislikes_text}")
+    
+            # Exibir a transcrição em um expander
+            with st.expander(f"Transcrição do vídeo"):
+                st.write(transcript)
+    
             st.markdown(df.set_table_styles([
                 {'selector': 'thead th', 'props': [('text-align', 'center')]},
                 {'selector': 'tbody th', 'props': [('text-align', 'center')]}
@@ -241,7 +247,7 @@ def main():
 
         if run_export:
             pdf_content = []
-            for index, video_id, title, published_at, details, video_df in video_results:
+            for index, video_id, title, published_at, details, transcript, video_df in video_results:
                 dislikes_text = f" | Dislikes: {locale.format_string('%d', int(details['dislikes']), grouping=True)}" if details['dislikes'] != 'N/A' else ""
                 pdf_content.append(f"{index}. {title}")
                 pdf_content.append(f"Data: {published_at} | Views: {locale.format_string('%d', int(details['views']), grouping=True)} | Likes: {locale.format_string('%d', int(details['likes']), grouping=True)}{dislikes_text}")
