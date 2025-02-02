@@ -203,6 +203,15 @@ def process_text(text, num_words):
 
     return df_styled
 
+import streamlit as st
+import locale
+import pandas as pd
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+from reportlab.lib import colors
+from googleapiclient.discovery import build
+from youtube_transcript_api import YouTubeTranscriptApi
+
 def main():
     st.sidebar.title("Configurações")
     channel_url = st.sidebar.text_input("Insira a URL do canal do YouTube:", "", placeholder="Exemplo: https://www.youtube.com/@canaltragicomico/")
@@ -234,6 +243,10 @@ def main():
         """, unsafe_allow_html=True)
         
         video_data, channel_info = get_video_ids(channel_url, max_results=max_videos)
+        
+        # Mensagens de depuração
+        st.write("Dados dos vídeos:", video_data)
+        st.write("Informações do canal:", channel_info)
 
         if not video_data:
             st.error("Não foi possível obter vídeos do canal.")
@@ -253,6 +266,11 @@ def main():
             
             transcript = get_video_transcript(video_id)
             details = get_video_details(video_id)
+            
+            # Mensagens de depuração
+            st.write(f"Transcrição do vídeo {index}:", transcript)
+            st.write(f"Detalhes do vídeo {index}:", details)
+            
             all_text += " " + transcript
             video_df = process_text(transcript, num_words)
             video_results.append((index, video_id, title, published_at, details, video_df))
@@ -287,6 +305,10 @@ def main():
         """, unsafe_allow_html=True)
 
         video_data, channel_info = get_video_ids(channel_url, max_results=max_videos)
+        
+        # Mensagens de depuração
+        st.write("Dados dos vídeos para exportação:", video_data)
+        st.write("Informações do canal para exportação:", channel_info)
 
         if not video_data:
             st.error("Não foi possível obter vídeos do canal.")
@@ -306,6 +328,11 @@ def main():
 
             transcript = get_video_transcript(video_id)
             details = get_video_details(video_id)
+            
+            # Mensagens de depuração
+            st.write(f"Transcrição do vídeo {index} para exportação:", transcript)
+            st.write(f"Detalhes do vídeo {index} para exportação:", details)
+            
             all_text += " " + transcript
             video_df = process_text(transcript, num_words).data
             video_results.append((index, video_id, title, published_at, details, video_df))
