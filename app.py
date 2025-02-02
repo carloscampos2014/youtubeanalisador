@@ -16,6 +16,18 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib import colors
 from googleapiclient.errors import HttpError
 import json
+import requests
+from pytube import YouTube
+import youtube_dl
+
+def get_location():
+    try:
+        response = requests.get("https://ipinfo.io")
+        data = response.json()
+        return data.get("country")
+    except Exception as e:
+        st.error(f"Erro ao obter localização: {e}")
+        return "Desconhecido"
 
 def generate_pdf(content_list, file_path):
     doc = SimpleDocTemplate(file_path, pagesize=letter)
@@ -144,7 +156,6 @@ def get_video_ids(channel_url, max_results=10):
             order="date"
         )
         response = request.execute()
-
         return [(item['id']['videoId'], item['snippet']['title'], datetime.strptime(item['snippet']['publishedAt'], "%Y-%m-%dT%H:%M:%SZ").strftime("%d/%m/%Y")) for item in response.get('items', [])], channel_info
     
     except HttpError as e:
@@ -165,24 +176,88 @@ def get_video_ids(channel_url, max_results=10):
         st.markdown(error_message, unsafe_allow_html=True)
         return [], channel_info
 
+def get_transcript_pytube(video_url):
+    try:
+        yt = YouTube(video_url)
+        captions = yt.captions.all()
+        transcript = ""
+        for caption in captions:
+            transcript += caption.generate_srt_captions()
+        return transcript
+    except Exception as e:
+        st.error(f"Erro ao obter transcrição usando pytube: {e}")
+        return ""
+
+def get_transcript_youtube_dl(video_url):
+    try:
+        ydl_opts = {
+            'skip_download': True,
+            'writesubtitles': True,
+            'subtitleslangs': ['en'],
+            'writeautomaticsub': True,
+            'cookiefile': 'cookies.txt'  # Usar cookies para contornar o CAPTCHA
+        }
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(video_url, download=False)
+            subtitles = info_dict.get('subtitles')
+            automatic_captions = info_dict.get('automatic_captions')
+            transcript = ""
+            if subtitles:
+                for lang in subtitles:
+                    transcript_url = subtitles[lang][0]['url']
+                    response = requests.get(transcript_url)
+                    transcript += response.text
+            elif automatic_captions:
+                for lang in automatic_captions:
+                    transcript_url = automatic_captions[lang][0]['url']
+                    response = requests.get(transcript_url)
+                    transcript += response.text
+            return transcript
+    except Exception as e:
+        st.error(f"Erro ao obter transcrição usando youtube_dl: {e}")
+        return ""
+
 def get_video_transcript(video_id):
     """Obtém a transcrição do vídeo, tentando diferentes métodos."""
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
+    
     try:
         try:
-            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'en'])
-        except Exception:
-            transcript = YouTubeTranscriptApi.get_transcript(video_id)
-        return " ".join([entry['text'] for entry in transcript])
-    except Exception:
+            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            all_transcripts = []
+            for transcript in transcript_list:
+                st.write(f"Tentando obter transcrição no idioma: {transcript.language}")
+                all_transcripts.append(transcript.fetch())
+            full_transcript = " ".join([entry['text'] for transcript in all_transcripts for entry in transcript])
+            return full_transcript
+        except Exception as e:
+            st.error(f"Erro ao buscar transcrição em todos os idiomas: {e}")
+        
+        # Tentar obter transcrição usando pytube
+        transcript = get_transcript_pytube(video_url)
+        if transcript:
+            return transcript
+
+        # Tentar obter transcrição usando youtube_dl
+        transcript = get_transcript_youtube_dl(video_url)
+        if transcript:
+            return transcript
+
         return ""
+    except Exception as e:
+        st.error(f"Erro ao obter transcrição para o vídeo ID {video_id}: {e}")
+        return ""
+
 def process_text(text, num_words):
     """Processa o texto e retorna as palavras mais frequentes, formatadas com centralização e numeração."""
+    # Encontrar todas as palavras no texto e filtrar stopwords
     words = re.findall(r'\b\w+\b', text.lower())
     words = [word for word in words if word not in stopwords.words('portuguese')]
     counter = Counter(words)
     most_common = counter.most_common(num_words)
     total_words = sum(counter.values())
     
+    # Criar DataFrame com as palavras mais comuns
     df = pd.DataFrame(most_common, columns=["Palavra", "Quantidade"])
     df["Percentual"] = (df["Quantidade"] / total_words) * 100
     df.index = df.index + 1
@@ -199,20 +274,18 @@ def process_text(text, num_words):
         {'selector': 'tbody th', 'props': [('text-align', 'center')]}
     ]).set_table_attributes('style="width:90%;"')
 
-    # Definindo os títulos das colunas
-    df_styled = df_styled.set_table_styles([
-        {'selector': 'th.col_heading.level0', 'props': [('text-align', 'center')]},
-        {'selector': 'th.col_heading.level1', 'props': [('text-align', 'center')]},
-        {'selector': 'td.row_heading.level0', 'props': [('text-align', 'center')]}
-    ])
-
     return df_styled
+
 def main():
     st.sidebar.title("Configurações")
     channel_url = st.sidebar.text_input("Insira a URL do canal do YouTube:", "", placeholder="Exemplo: https://www.youtube.com/@canaltragicomico/")
     st.sidebar.write("Insira a URL do canal no formato válido, por exemplo, com @handle ou ID do canal.")
     num_words = st.sidebar.number_input("Quantidade de palavras mais usadas:", min_value=1, max_value=100, value=10)
     max_videos = st.sidebar.number_input("Quantidade de vídeos a analisar:", min_value=1, max_value=20, value=2)
+
+    # Use a função get_location no seu código
+    location = get_location()
+    st.write(f"Localização da requisição: {location}")
 
     st.title("Analisador de Palavras para Canais do YouTube")
 
@@ -257,6 +330,7 @@ def main():
             
             transcript = get_video_transcript(video_id)
             details = get_video_details(video_id)
+            
             all_text += " " + transcript
             video_df = process_text(transcript, num_words)
             video_results.append((index, video_id, title, published_at, details, video_df))
@@ -310,6 +384,7 @@ def main():
 
             transcript = get_video_transcript(video_id)
             details = get_video_details(video_id)
+            
             all_text += " " + transcript
             video_df = process_text(transcript, num_words).data
             video_results.append((index, video_id, title, published_at, details, video_df))
