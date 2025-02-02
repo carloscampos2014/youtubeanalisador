@@ -144,7 +144,7 @@ def get_video_ids(channel_url, max_results=10):
             order="date"
         )
         response = request.execute()
-        print(f"Resposta da API: {response}")
+        st.write(f"Resposta da API: {response}")
 
         return [(item['id']['videoId'], item['snippet']['title'], datetime.strptime(item['snippet']['publishedAt'], "%Y-%m-%dT%H:%M:%SZ").strftime("%d/%m/%Y")) for item in response.get('items', [])], channel_info
     
