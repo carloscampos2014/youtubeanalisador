@@ -175,13 +175,28 @@ def get_video_ids(channel_url, max_results=10):
         return [], channel_info
 
 def get_video_transcript(video_id):
-    """Obtém a transcrição do vídeo, tentando diferentes métodos."""
+    """Obtém a transcrição do vídeo em todos os idiomas disponíveis."""
     try:
-        try:
-            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'en'])
-        except Exception as e:
-            transcript = YouTubeTranscriptApi.get_transcript(video_id)
-        return " ".join([entry['text'] for entry in transcript])
+        st.write(f"Buscando transcrição para o vídeo ID: {video_id}")
+        
+        # Obter todas as legendas disponíveis para o vídeo
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        
+        all_transcripts = []
+        for transcript in transcript_list:
+            # Tentar obter a transcrição em cada idioma disponível
+            try:
+                st.write(f"Tentando obter transcrição no idioma: {transcript.language}")
+                all_transcripts.append(transcript.fetch())
+            except Exception as e:
+                st.write(f"Erro ao obter transcrição no idioma {transcript.language}: {e}")
+                continue
+        
+        # Concatenar todas as transcrições obtidas
+        full_transcript = " ".join([entry['text'] for transcript in all_transcripts for entry in transcript])
+        
+        st.write(f"Transcrição do vídeo ID {video_id} obtida com sucesso.")
+        return full_transcript
     except Exception as e:
         st.error(f"Erro ao obter transcrição para o vídeo ID {video_id}: {e}")
         st.error(f"Detalhes do erro: {e}")
