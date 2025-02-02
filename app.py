@@ -167,13 +167,10 @@ def get_video_ids(channel_url, max_results=10):
 def get_video_transcript(video_id):
     """Obtém a transcrição do vídeo, tentando diferentes métodos."""
     try:
-        st.write(f"Buscando transcrição para o vídeo ID: {video_id}")
         try:
             transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'en'])
         except Exception as e:
-            st.write(f"Erro ao buscar transcrição em 'pt' ou 'en': {e}")
             transcript = YouTubeTranscriptApi.get_transcript(video_id)
-        st.write(f"Transcrição do vídeo ID {video_id} obtida com sucesso.")
         return " ".join([entry['text'] for entry in transcript])
     except Exception as e:
         st.error(f"Erro ao obter transcrição para o vídeo ID {video_id}: {e}")
@@ -239,10 +236,6 @@ def main():
         """, unsafe_allow_html=True)
         
         video_data, channel_info = get_video_ids(channel_url, max_results=max_videos)
-        
-        # Mensagens de depuração
-        st.write("Dados dos vídeos:", video_data)
-        st.write("Informações do canal:", channel_info)
 
         if not video_data:
             st.error("Não foi possível obter vídeos do canal.")
@@ -262,10 +255,6 @@ def main():
             
             transcript = get_video_transcript(video_id)
             details = get_video_details(video_id)
-            
-            # Mensagens de depuração
-            st.write(f"Transcrição do vídeo {index}:", transcript)
-            st.write(f"Detalhes do vídeo {index}:", details)
             
             all_text += " " + transcript
             video_df = process_text(transcript, num_words)
@@ -301,10 +290,6 @@ def main():
         """, unsafe_allow_html=True)
 
         video_data, channel_info = get_video_ids(channel_url, max_results=max_videos)
-        
-        # Mensagens de depuração
-        st.write("Dados dos vídeos para exportação:", video_data)
-        st.write("Informações do canal para exportação:", channel_info)
 
         if not video_data:
             st.error("Não foi possível obter vídeos do canal.")
@@ -324,10 +309,6 @@ def main():
 
             transcript = get_video_transcript(video_id)
             details = get_video_details(video_id)
-            
-            # Mensagens de depuração
-            st.write(f"Transcrição do vídeo {index} para exportação:", transcript)
-            st.write(f"Detalhes do vídeo {index} para exportação:", details)
             
             all_text += " " + transcript
             video_df = process_text(transcript, num_words).data
