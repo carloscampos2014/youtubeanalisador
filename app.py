@@ -17,6 +17,8 @@ from reportlab.lib import colors
 from googleapiclient.errors import HttpError
 import json
 import requests
+from pytube import YouTube
+import youtube_dl
 
 def get_location():
     try:
@@ -174,32 +176,77 @@ def get_video_ids(channel_url, max_results=10):
         st.markdown(error_message, unsafe_allow_html=True)
         return [], channel_info
 
+def get_transcript_pytube(video_url):
+    try:
+        yt = YouTube(video_url)
+        captions = yt.captions.all()
+        transcript = ""
+        for caption in captions:
+            if 'pt' in caption.code or 'en' in caption.code:
+                transcript += caption.generate_srt_captions()
+        return transcript
+    except Exception as e:
+        st.error(f"Erro ao obter transcrição usando pytube: {e}")
+        return ""
+
+def get_transcript_youtube_dl(video_url):
+    try:
+        ydl_opts = {
+            'skip_download': True,
+            'writesubtitles': True,
+            'subtitleslangs': ['pt', 'en'],
+            'writeautomaticsub': True
+        }
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(video_url, download=False)
+            subtitles = info_dict.get('subtitles')
+            automatic_captions = info_dict.get('automatic_captions')
+            transcript = ""
+            if subtitles:
+                for lang in ['pt', 'en']:
+                    if lang in subtitles:
+                        transcript += ydl.download(subtitles[lang][0]['url'])
+            elif automatic_captions:
+                for lang in ['pt', 'en']:
+                    if lang in automatic_captions:
+                        transcript += ydl.download(automatic_captions[lang][0]['url'])
+            return transcript
+    except Exception as e:
+        st.error(f"Erro ao obter transcrição usando youtube_dl: {e}")
+        return ""
+
 def get_video_transcript(video_id):
-    """Obtém a transcrição do vídeo em todos os idiomas disponíveis."""
+    """Obtém a transcrição do vídeo, tentando diferentes métodos."""
     try:
         st.write(f"Buscando transcrição para o vídeo ID: {video_id}")
-        
-        # Obter todas as legendas disponíveis para o vídeo
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        
-        all_transcripts = []
-        for transcript in transcript_list:
-            # Tentar obter a transcrição em cada idioma disponível
-            try:
-                st.write(f"Tentando obter transcrição no idioma: {transcript.language}")
-                all_transcripts.append(transcript.fetch())
-            except Exception as e:
-                st.write(f"Erro ao obter transcrição no idioma {transcript.language}: {e}")
-                continue
-        
-        # Concatenar todas as transcrições obtidas
-        full_transcript = " ".join([entry['text'] for transcript in all_transcripts for entry in transcript])
-        
+        try:
+            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'en'])
+            st.write(f"Resposta da API para 'pt' ou 'en': {transcript}")
+        except Exception as e:
+            st.write(f"Erro ao buscar transcrição em 'pt' ou 'en': {e}")
+            transcript = YouTubeTranscriptApi.get_transcript(video_id)
+            st.write(f"Resposta da API (fallback): {transcript}")
         st.write(f"Transcrição do vídeo ID {video_id} obtida com sucesso.")
-        return full_transcript
+        return " ".join([entry['text'] for entry in transcript])
     except Exception as e:
-        st.error(f"Erro ao obter transcrição para o vídeo ID {video_id}: {e}")
+        st.error(f"Erro ao obter transcrição para o vídeo ID {video_id} usando YouTubeTranscriptApi: {e}")
         st.error(f"Detalhes do erro: {e}")
+
+        # Tentar obter transcrição usando pytube
+        st.write(f"Tentando obter transcrição usando pytube...")
+        video_url = f"https://www.youtube.com/watch?v={video_id}"
+        transcript = get_transcript_pytube(video_url)
+        if transcript:
+            st.write(f"Transcrição do vídeo ID {video_id} obtida com sucesso usando pytube.")
+            return transcript
+
+        # Tentar obter transcrição usando youtube_dl
+        st.write(f"Tentando obter transcrição usando youtube_dl...")
+        transcript = get_transcript_youtube_dl(video_url)
+        if transcript:
+            st.write(f"Transcrição do vídeo ID {video_id} obtida com sucesso usando youtube_dl.")
+            return transcript
+
         return ""
 
 def process_text(text, num_words):
