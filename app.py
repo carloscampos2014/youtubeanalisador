@@ -167,12 +167,16 @@ def get_video_ids(channel_url, max_results=10):
 def get_video_transcript(video_id):
     """Obtém a transcrição do vídeo, tentando diferentes métodos."""
     try:
+        st.write(f"Buscando transcrição para o vídeo ID: {video_id}")
         try:
             transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'en'])
-        except Exception:
+        except Exception as e:
+            st.write(f"Erro ao buscar transcrição em 'pt' ou 'en': {e}")
             transcript = YouTubeTranscriptApi.get_transcript(video_id)
+        st.write(f"Transcrição do vídeo ID {video_id} obtida com sucesso.")
         return " ".join([entry['text'] for entry in transcript])
-    except Exception:
+    except Exception as e:
+        st.error(f"Erro ao obter transcrição para o vídeo ID {video_id}: {e}")
         return ""
 
 def process_text(text, num_words):
@@ -202,15 +206,6 @@ def process_text(text, num_words):
     ]).set_table_attributes('style="width:90%;"')
 
     return df_styled
-
-import streamlit as st
-import locale
-import pandas as pd
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
-from reportlab.lib import colors
-from googleapiclient.discovery import build
-from youtube_transcript_api import YouTubeTranscriptApi
 
 def main():
     st.sidebar.title("Configurações")
