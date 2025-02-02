@@ -121,7 +121,7 @@ class YouTubeAnalyzer:
             except Exception:
                 transcript = YouTubeTranscriptApi.get_transcript(video_id)
             return " ".join([entry['text'] for entry in transcript])
-        except Exception:
+        except Exception as e:
             st.error(f"Erro ao obter a transcrição do vídeo {video_id}: {e}")
             return None
 
