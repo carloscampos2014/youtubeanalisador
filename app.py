@@ -177,6 +177,7 @@ def get_video_transcript(video_id):
         return " ".join([entry['text'] for entry in transcript])
     except Exception as e:
         st.error(f"Erro ao obter transcrição para o vídeo ID {video_id}: {e}")
+        st.error(f"Detalhes do erro: {e}")
         return ""
 
 def process_text(text, num_words):
