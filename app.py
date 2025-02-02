@@ -20,7 +20,12 @@ import json
 # Configurações iniciais
 nltk.download('stopwords')
 load_dotenv()
-locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+
+# Configurar o locale para o Brasil
+try:
+    locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+except locale.Error:
+    locale.setlocale(locale.LC_ALL, '')
 
 # Constantes
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
