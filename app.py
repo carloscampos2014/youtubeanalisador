@@ -174,7 +174,8 @@ def get_video_transcript(video_id):
             transcript = YouTubeTranscriptApi.get_transcript(video_id)
         return " ".join([entry['text'] for entry in transcript])
     except Exception:
-        return ""
+        return None
+
 def process_text(text, num_words):
     """Processa o texto e retorna as palavras mais frequentes, formatadas com centralização e numeração."""
     words = re.findall(r'\b\w+\b', text.lower())
@@ -207,6 +208,7 @@ def process_text(text, num_words):
     ])
 
     return df_styled
+
 def main():
     st.sidebar.title("Configurações")
     channel_url = st.sidebar.text_input("Insira a URL do canal do YouTube:", "", placeholder="Exemplo: https://www.youtube.com/@canaltragicomico/")
@@ -228,7 +230,7 @@ def main():
     if run_monitor or run_export:
         st.empty()
 
-    if run_monitor:
+    if run_monitor or run_export:
         placeholder = st.empty()
         placeholder.markdown("""
             <div class="spinner-container">
@@ -256,6 +258,10 @@ def main():
             """, unsafe_allow_html=True)
             
             transcript = get_video_transcript(video_id)
+            if transcript is None:
+                placeholder.empty()  # Remover o spinner em caso de erro
+                return
+
             details = get_video_details(video_id)
             all_text += " " + transcript
             video_df = process_text(transcript, num_words)
@@ -281,76 +287,45 @@ def main():
                 {'selector': 'tbody th', 'props': [('text-align', 'center')]}
             ]).to_html(), unsafe_allow_html=True)
 
-    if run_export:
-        placeholder = st.empty()
-        placeholder.markdown("""
-            <div class="spinner-container">
-                <div class="spinner"></div>
-                <div class="spinner-text">Buscando vídeos...</div>
-            </div>
-        """, unsafe_allow_html=True)
+        if run_export:
+            pdf_content = []
 
-        video_data, channel_info = get_video_ids(channel_url, max_results=max_videos)
+            for index, video_id, title, published_at, details, video_df in video_results:
+                dislikes_text = f" | Dislikes: {locale.format_string('%d', int(details['dislikes']), grouping=True)}" if details['dislikes'] != 'N/A' else ""
+                
+                pdf_content.append(f"{index}. {title}")
+                pdf_content.append(f"Data: {published_at} | Views: {locale.format_string('%d', int(details['views']), grouping=True)} | Likes: {locale.format_string('%d', int(details['likes']), grouping=True)}{dislikes_text}")
 
-        if not video_data:
-            st.error("Não foi possível obter vídeos do canal.")
-            placeholder.empty()
-            return
+                # Adicionar a tabela de resultados ao PDF
+                table_data = [['#', 'Palavra', 'Quantidade', 'Percentual']]
+                for idx, row in enumerate(video_df.itertuples(index=False, name=None), start=1):
+                    table_data.append([idx, row[0], row[1], row[2]])
 
-        all_text = ""
-        video_results = []
-        pdf_content = []
+                table = Table(table_data, colWidths=[20, 240, 100, 100])
+                table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+                    ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+                    ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ]))
+                pdf_content.append(table)
 
-        for index, (video_id, title, published_at) in enumerate(video_data, start=1):
-            placeholder.markdown(f"""
-                <div class="spinner-container">
-                    <div class="spinner"></div>
-                    <div class="spinner-text">Analisando {index}º Vídeo com Título: {title}...</div>
-            """, unsafe_allow_html=True)
+            if channel_info:
+                pdf_content.insert(0, f"Quantidade de vídeos: {locale.format_string('%d', int(channel_info['videoCount']), grouping=True)}")
+                pdf_content.insert(0, f"Inscritos: {locale.format_string('%d', int(channel_info['subscriberCount']), grouping=True)}")
+                pdf_content.insert(0, f"**Descrição:** {channel_info['description']}")
+                pdf_content.insert(0, f"Informações do canal: {channel_info['title']}")
 
-            transcript = get_video_transcript(video_id)
-            details = get_video_details(video_id)
-            all_text += " " + transcript
-            video_df = process_text(transcript, num_words).data
-            video_results.append((index, video_id, title, published_at, details, video_df))
+            pdf_file_path = "resultados.pdf"
+            generate_pdf(pdf_content, pdf_file_path)
 
-            dislikes_text = f" | Dislikes: {locale.format_string('%d', int(details['dislikes']), grouping=True)}" if details['dislikes'] != 'N/A' else ""
-
-            pdf_content.append(f"{index}. {title}")
-            pdf_content.append(f"Data: {published_at} | Views: {locale.format_string('%d', int(details['views']), grouping=True)} | Likes: {locale.format_string('%d', int(details['likes']), grouping=True)}{dislikes_text}")
-
-            # Adicionar a tabela de resultados ao PDF
-            table_data = [['#', 'Palavra', 'Quantidade', 'Percentual']]
-            for idx, row in enumerate(video_df.itertuples(index=False, name=None), start=1):
-                table_data.append([idx, row[0], row[1], row[2]])
-            
-            table = Table(table_data, colWidths=[20, 240, 100, 100])
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (0, -1), 'CENTER'),  # Alinhar coluna 'Palavra' à esquerda
-                ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-                ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ]))
-            pdf_content.append(table)
-
-        if channel_info:
-            pdf_content.insert(0, f"Quantidade de vídeos: {locale.format_string('%d', int(channel_info['videoCount']), grouping=True)}")
-            pdf_content.insert(0, f"Inscritos: {locale.format_string('%d', int(channel_info['subscriberCount']), grouping=True)}")
-            pdf_content.insert(0, f"**Descrição:** {channel_info['description']}")
-            pdf_content.insert(0, f"Informações do canal: {channel_info['title']}")
-
-        placeholder.empty()
-
-        pdf_file_path = "resultados.pdf"
-        generate_pdf(pdf_content, pdf_file_path)
-
-        with open(pdf_file_path, "rb") as f:
-            st.download_button("Baixar PDF", f, file_name="resultados.pdf", mime="application/pdf")
+            with open(pdf_file_path, "rb") as f:
+                st.download_button("Baixar PDF", f, file_name="resultados.pdf", mime="application/pdf")
 
 if __name__ == "__main__":
     main()
