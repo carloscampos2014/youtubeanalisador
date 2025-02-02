@@ -16,6 +16,16 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib import colors
 from googleapiclient.errors import HttpError
 import json
+import requests
+
+def get_location():
+    try:
+        response = requests.get("https://ipinfo.io")
+        data = response.json()
+        return data.get("country")
+    except Exception as e:
+        st.error(f"Erro ao obter localização: {e}")
+        return "Desconhecido"
 
 def generate_pdf(content_list, file_path):
     doc = SimpleDocTemplate(file_path, pagesize=letter)
@@ -211,6 +221,10 @@ def main():
     st.sidebar.write("Insira a URL do canal no formato válido, por exemplo, com @handle ou ID do canal.")
     num_words = st.sidebar.number_input("Quantidade de palavras mais usadas:", min_value=1, max_value=100, value=10)
     max_videos = st.sidebar.number_input("Quantidade de vídeos a analisar:", min_value=1, max_value=20, value=2)
+
+    # Use a função get_location no seu código
+    location = get_location()
+    st.write(f"Localização da requisição: {location}")
 
     st.title("Analisador de Palavras para Canais do YouTube")
 
