@@ -222,7 +222,6 @@ def get_video_transcript(video_id):
     video_url = f"https://www.youtube.com/watch?v={video_id}"
     
     try:
-        st.write(f"Buscando transcrição para o vídeo ID: {video_id}")
         try:
             transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
             all_transcripts = []
@@ -230,29 +229,23 @@ def get_video_transcript(video_id):
                 st.write(f"Tentando obter transcrição no idioma: {transcript.language}")
                 all_transcripts.append(transcript.fetch())
             full_transcript = " ".join([entry['text'] for transcript in all_transcripts for entry in transcript])
-            st.write(f"Transcrição do vídeo ID {video_id} obtida com sucesso.")
             return full_transcript
         except Exception as e:
-            st.write(f"Erro ao buscar transcrição em todos os idiomas: {e}")
+            st.error(f"Erro ao buscar transcrição em todos os idiomas: {e}")
         
         # Tentar obter transcrição usando pytube
-        st.write(f"Tentando obter transcrição usando pytube...")
         transcript = get_transcript_pytube(video_url)
         if transcript:
-            st.write(f"Transcrição do vídeo ID {video_id} obtida com sucesso usando pytube.")
             return transcript
 
         # Tentar obter transcrição usando youtube_dl
-        st.write(f"Tentando obter transcrição usando youtube_dl...")
         transcript = get_transcript_youtube_dl(video_url)
         if transcript:
-            st.write(f"Transcrição do vídeo ID {video_id} obtida com sucesso usando youtube_dl.")
             return transcript
 
         return ""
     except Exception as e:
         st.error(f"Erro ao obter transcrição para o vídeo ID {video_id}: {e}")
-        st.error(f"Detalhes do erro: {e}")
         return ""
 
 def process_text(text, num_words):
